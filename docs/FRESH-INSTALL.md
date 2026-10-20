@@ -17,7 +17,7 @@
 
 ```bash
 git clone https://github.com/SHOUREN222/polo-panel-starter.git
-cd polo-panel
+cd polo-panel-starter
 cp .env.docker.example .env
 ```
 

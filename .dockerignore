@@ -1,0 +1,28 @@
+# Rebuilt / provided separately
+/vendor
+/node_modules
+/public/hot
+# NOTE: public/build IS copied in (built on the host — see Makefile)
+
+# Secrets / local state — never bake into the image
+.env
+.env.*
+/database/*.sqlite
+/database/*.sqlite-*
+/storage/logs/*
+/storage/framework/cache/*
+/storage/framework/sessions/*
+/storage/framework/views/*
+/storage/app/public/*
+
+# VCS / tooling / docs not needed at runtime
+.git
+.gitignore
+.github
+.claude
+.deploy.env
+Dockerfile
+.dockerignore
+*.md
+/tests
+.phpunit.result.cache

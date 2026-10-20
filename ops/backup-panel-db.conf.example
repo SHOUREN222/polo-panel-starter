@@ -1,0 +1,18 @@
+# Site config for ops/backup-panel-db.sh — copy to /etc/panel-backup.conf on the
+# server and fill in. This file holds host IPs, so the real copy is NOT committed
+# (the repo only ships this .example). All keys are optional; sensible defaults
+# are in the script.
+
+# Space-separated offsite hosts to also store backups on (each gets a copy in
+# $OFFSITE_DIR via key-based SSH as root). Leave empty for local-only backups.
+# OFFSITE_NODES="10.0.0.1 10.0.0.2"
+OFFSITE_NODES=""
+
+# --- Optional overrides (defaults shown) ---
+# PANEL_DIR=/var/www/panel
+# DB_PATH=/var/www/panel/database/database.sqlite
+# BACKUP_DEST=/root/backups
+# OFFSITE_DIR=/root/panel-backups
+# RETAIN_DAYS=14
+# PHP_BIN=php8.4
+# SSH_KEY=/var/www/panel/storage/app/relay_ssh_key

@@ -1,0 +1,50 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# 多租户分站 · Caddy 追加片段（参考）
+#
+# 这不是完整 Caddyfile，是要往生产机现有 Caddyfile 里【新增】的两块：
+#   1) 全局 options 里的 on_demand_tls（问面板"这域名能签吗"）
+#   2) 一个新的 *.example.com 站点块（按需签证书 + 反代到同一个 nginx）
+#
+# 铁律：现有 app.example.com（主站）站点块【原样不动】。显式域名优先于泛匹配，
+# 主站不受泛块影响。改完先 `caddy validate`，通过再 `caddy reload`（热加载不断连）。
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ① 全局 options 块 —— 若你的 Caddyfile 顶部已有 `{ … }` 全局块，只把 on_demand_tls
+#    这一段【并进去】；没有就新增这个块。ask 端点只放行主站域名 + 后台开过的分站，
+#    随机域名一律 403，防止有人拿 *.example.com 刷爆 ACME 证书额度。
+{
+	on_demand_tls {
+		ask http://127.0.0.1:8080/api/caddy-ondemand-ask
+	}
+}
+
+# ② 主站块 —— 【不要改】。这里只是示意它长这样、要保留。你机器上的真实内容照旧。
+# app.example.com {
+# 	reverse_proxy 127.0.0.1:8080
+# 	# …你现有的 header_up / 日志 / 压缩等配置，全部保持原样…
+# }
+
+# ③ 分站泛子域块 —— 【新增】。每个 代理名.example.com 首访时按需签证书，
+#    反代到与主站同一个 nginx:8080（Laravel 按子域识别租户）。
+#    reverse_proxy 目标 + header 必须与主站块一致，把上面主站块里的 reverse_proxy
+#    整段（含 header_up X-Forwarded-* 之类）原样复制过来，只是域名换成泛匹配。
+*.example.com {
+	tls {
+		on_demand
+	}
+	reverse_proxy 127.0.0.1:8080 {
+		# ↓↓↓ 用主站块里那份 reverse_proxy 的 header 配置替换/补齐这里 ↓↓↓
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+}
+
+# 上线校验：
+#   caddy validate --config /etc/caddy/Caddyfile
+#   caddy reload   --config /etc/caddy/Caddyfile
+#   # 后台→分站管理建一个 demo，然后：
+#   curl -s -o /dev/null -w '%{http_code}\n' 'http://127.0.0.1:8080/api/caddy-ondemand-ask?domain=demo.example.com'   # 应为 200
+#   curl -s -o /dev/null -w '%{http_code}\n' 'http://127.0.0.1:8080/api/caddy-ondemand-ask?domain=rand9527.example.com' # 应为 403
+#   浏览器打开 https://demo.example.com → 绿锁、能注册登录

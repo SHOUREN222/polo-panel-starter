@@ -1,0 +1,92 @@
+# One-click stack for the Polo panel.
+#
+#   1. cp .env.docker.example .env   (then edit APP_URL / ADMIN_PANEL_PATH / DB_PASSWORD)
+#   2. docker compose up -d --build
+#   3. open http://localhost:8080  (admin at /<ADMIN_PANEL_PATH>)
+#
+# Services: app (php-fpm) · web (nginx) · db (mariadb) · queue · scheduler · telegram.
+# Queue/cache/session all use the DB driver, so there is no Redis to run.
+
+name: polo-panel
+
+services:
+  app:
+    build: .
+    image: polo-panel:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - public_data:/var/www/html/public
+      - storage_data:/var/www/html/storage
+      - ./.env:/var/www/html/.env
+    # entrypoint runs migrate + caches, then php-fpm
+
+  web:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    volumes:
+      - public_data:/var/www/html/public:ro
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+  db:
+    image: mariadb:11
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: "${DB_DATABASE:-polo}"
+      MARIADB_USER: "${DB_USERNAME:-polo}"
+      MARIADB_PASSWORD: "${DB_PASSWORD:?Set DB_PASSWORD in .env}"
+      MARIADB_ROOT_PASSWORD: "${DB_ROOT_PASSWORD:?Set DB_ROOT_PASSWORD in .env}"
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  queue:
+    image: polo-panel:latest
+    restart: unless-stopped
+    depends_on:
+      - app
+    volumes:
+      - storage_data:/var/www/html/storage
+      - ./.env:/var/www/html/.env
+    # Skip the web entrypoint's migrate/cache; just process jobs.
+    entrypoint: ["php", "artisan", "queue:work", "--sleep=3", "--tries=3", "--max-time=3600"]
+
+  scheduler:
+    image: polo-panel:latest
+    restart: unless-stopped
+    depends_on:
+      - app
+    volumes:
+      - storage_data:/var/www/html/storage
+      - ./.env:/var/www/html/.env
+    # Runs ISP enforcement / expiry reminders / client sync on schedule.
+    entrypoint: ["php", "artisan", "schedule:work"]
+
+  telegram:
+    image: polo-panel:latest
+    restart: unless-stopped
+    depends_on:
+      - app
+    volumes:
+      - storage_data:/var/www/html/storage
+      - ./.env:/var/www/html/.env
+    # The bot poller only runs once a token is set in 系统设置 → Telegram; until
+    # then telegram:poll exits and we retry slowly, so a fresh (unconfigured)
+    # install idles here instead of crash-looping, and starts on its own once
+    # the token is saved.
+    entrypoint: ["sh", "-c", "while true; do php artisan telegram:poll || sleep 30; done"]
+
+volumes:
+  public_data:
+  storage_data:
+  db_data:
